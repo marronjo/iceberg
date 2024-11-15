@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+//Uniswap Imports
 import {BaseHook} from "v4-periphery/src/base/hooks/BaseHook.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
@@ -16,6 +17,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {EpochLibrary, Epoch} from "./EpochLibrary.sol";
 
+//Fhenix Imports
 import { 
     FHE,
     euint256,
@@ -23,8 +25,10 @@ import {
     euint32,
     ebool
     } from "@fhenixprotocol/contracts/FHE.sol";
+import {IFHERC20} from "./IFHERC20.sol";
+import {FHERC6909} from "./FHERC6909.sol";
 
-contract Iceberg is BaseHook {
+contract Iceberg is BaseHook, FHERC6909 {
 
     error NotManager();
     error ZeroLiquidity();
@@ -76,6 +80,8 @@ contract Iceberg is BaseHook {
     }
 
     mapping(Epoch => EncEpochInfo) public encEpochInfos;
+
+    mapping(bytes32 tokenId => euint128 totalSupply) public totalSupply;
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
@@ -140,6 +146,10 @@ contract Iceberg is BaseHook {
         return compressed * tickSpacing;
     }
 
+    function _getTokenFromPoolKey(PoolKey calldata poolKey, bool zeroForOne) private pure returns(address token){
+        token = zeroForOne ? Currency.unwrap(poolKey.currency0) : Currency.unwrap(poolKey.currency1);
+    }
+
     function afterInitialize(address, PoolKey calldata key, uint160, int24 tick)
         external
         override
@@ -150,7 +160,7 @@ contract Iceberg is BaseHook {
         return Iceberg.afterInitialize.selector;
     }
 
-    function placeLimitOrder(PoolKey calldata key, euint32 tickLower, ebool zeroForOne, euint128 liquidity)
+    function placeIcebergOrder(PoolKey calldata key, euint32 tickLower, ebool zeroForOne, euint128 liquidity)
         external
         onlyValidPools(key.hooks)
     {
@@ -162,8 +172,11 @@ contract Iceberg is BaseHook {
         //     )
         // );
 
-        //TODO Transfer in FHERC20 tokens!!
-        //TODO Issue receipt of FHERC6909 tokens!!
+        bytes32 tokenId = keccak256(abi.encode(key, tickLower, zeroForOne));
+
+        //mint FHERC6909 tokens to user as receipt of order
+        _mintEnc(msg.sender, tokenId, liquidity);
+        totalSupply[tokenId] = FHE.add(totalSupply[tokenId], liquidity);
 
         EncEpochInfo storage epochInfo;
         Epoch epoch = getEncEpoch(key, tickLower, zeroForOne);
@@ -184,7 +197,15 @@ contract Iceberg is BaseHook {
             epochInfo.liquidity[msg.sender] = FHE.add(epochInfo.liquidity[msg.sender], liquidity);
         }
 
-        //emit Place(msg.sender, epoch, key, tickLower, zeroForOne, liquidity);
+        //TODO Transfer in FHERC20 tokens!! TransferFrom
+        euint128 zero = FHE.asEuint128(0);
+
+        euint128 token0Amount = FHE.select(zeroForOne, liquidity, zero);
+        euint128 token1Amount = FHE.select(zeroForOne, zero, liquidity);
+
+        // send both tokens, one amount is zero to obscure trade direction
+        IFHERC20(Currency.unwrap(key.currency0)).transferFromEncrypted(msg.sender, address(this), token0Amount);
+        IFHERC20(Currency.unwrap(key.currency1)).transferFromEncrypted(msg.sender, address(this), token1Amount);
     }
 
 }
