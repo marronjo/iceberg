@@ -65,7 +65,7 @@ contract FHERC20 is IFHERC20, ERC20, Permissioned {
         return spent;
     }
 
-    function wrap(uint32 amount) public {
+    function wrap(uint128 amount) external {
         if (balanceOf(msg.sender) < amount) {
             revert ErrorInsufficientFunds();
         }
@@ -76,7 +76,7 @@ contract FHERC20 is IFHERC20, ERC20, Permissioned {
         totalEncryptedSupply = totalEncryptedSupply + eAmount;
     }
 
-    function unwrap(uint32 amount) public {
+    function unwrap(uint128 amount) external {
         euint128 encAmount = FHE.asEuint128(amount);
 
         euint128 amountToUnwrap = FHE.select(_encBalances[msg.sender].gte(encAmount), encAmount, FHE.asEuint128(0));

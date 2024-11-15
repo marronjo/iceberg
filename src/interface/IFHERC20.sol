@@ -45,6 +45,9 @@ interface IFHERC20 {
      */
     function balanceOfEncrypted(address account) external view returns (euint128);
 
+    function wrap(uint128 amount) external;
+    function unwrap(uint128 amount) external;
+
     /**
      * @dev Moves a `value` amount of tokens from the caller's account to `to`.
      *
