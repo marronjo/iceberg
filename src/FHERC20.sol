@@ -5,7 +5,7 @@ import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import { FHE, euint128, inEuint128 } from "@fhenixprotocol/contracts/FHE.sol";
 import { Permissioned, Permission } from "@fhenixprotocol/contracts/access/Permissioned.sol";
 
-import { IFHERC20 } from "./IFHERC20.sol";
+import { IFHERC20 } from "./interface/IFHERC20.sol";
 
 error ErrorInsufficientFunds();
 error ERC20InvalidApprover(address);

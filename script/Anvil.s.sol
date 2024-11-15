@@ -1,5 +1,7 @@
-// // SPDX-License-Identifier: MIT
-// pragma solidity ^0.8.19;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+contract Anvil {}
 
 // import "forge-std/Script.sol";
 // import {IHooks} from "v4-core/src/interfaces/IHooks.sol";

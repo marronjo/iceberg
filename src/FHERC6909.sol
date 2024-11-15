@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import {IFHERC6909} from "./IFHERC6909.sol";
+import {IFHERC6909} from "./interface/IFHERC6909.sol";
 import { FHE, euint128, inEuint128, ebool } from "@fhenixprotocol/contracts/FHE.sol";
 
-abstract contract FHERC6909 {
+abstract contract FHERC6909 is IFHERC6909 {
 
     mapping(address owner => mapping(address operator => ebool isOperator)) public isOperator;
 

@@ -15,7 +15,7 @@ import {CurrencySettler} from "@uniswap/v4-core/test/utils/CurrencySettler.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
-import {EpochLibrary, Epoch} from "./EpochLibrary.sol";
+import {EpochLibrary, Epoch} from "./lib/EpochLibrary.sol";
 
 //Fhenix Imports
 import { 
@@ -25,7 +25,7 @@ import {
     euint32,
     ebool
     } from "@fhenixprotocol/contracts/FHE.sol";
-import {IFHERC20} from "./IFHERC20.sol";
+import {IFHERC20} from "./interface/IFHERC20.sol";
 import {FHERC6909} from "./FHERC6909.sol";
 
 contract Iceberg is BaseHook, FHERC6909 {
