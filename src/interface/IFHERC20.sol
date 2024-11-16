@@ -6,6 +6,7 @@ pragma solidity >=0.8.19 <0.9.0;
 
 import { Permission, Permissioned } from "@fhenixprotocol/contracts/access/Permissioned.sol";
 import { euint128, inEuint128 } from "@fhenixprotocol/contracts/FHE.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 // MENOTE
 // Copied straight from @fhenixprotocol/contracts/experimental/token/FHERC20/*
@@ -15,7 +16,7 @@ import { euint128, inEuint128 } from "@fhenixprotocol/contracts/FHE.sol";
 /**
  * @dev Interface of the ERC-20 standard as defined in the ERC.
  */
-interface IFHERC20 {
+interface IFHERC20 is IERC20 {
     /**
      * @dev Emitted when `value` tokens are moved from one account (`from`) to
      * another (`to`).
@@ -47,6 +48,9 @@ interface IFHERC20 {
 
     function wrap(uint128 amount) external;
     function unwrap(uint128 amount) external;
+
+    // function transfer(address to, uint256 value) external;
+    // function approve(address spender, uint256 amount) external;
 
     /**
      * @dev Moves a `value` amount of tokens from the caller's account to `to`.

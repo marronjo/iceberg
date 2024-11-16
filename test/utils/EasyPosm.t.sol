@@ -31,7 +31,7 @@ contract CounterTest is Test, Fixtures {
         deployFreshManagerAndRouters();
         deployMintAndApprove2Currencies();
 
-        deployAndApprovePosm(manager);
+        deployAndApprovePosm(manager, currency0, currency1);
 
         // Create the pool
         key = PoolKey(currency0, currency1, 3000, 60, IHooks(address(0)));

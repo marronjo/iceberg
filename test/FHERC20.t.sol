@@ -4,8 +4,8 @@ pragma solidity >=0.8.25 <0.9.0;
 import { Test } from "forge-std/Test.sol";
 
 import { FHERC20 } from "../src/FHERC20.sol";
-import { FheEnabled } from "../util/FheHelper.sol";
-import { Permission, PermissionHelper } from "../util/PermissionHelper.sol";
+import { FheEnabled } from "./utils/FHEHelper.sol";
+import { Permission, PermissionHelper } from "./utils/PermissionHelper.sol";
 
 import { inEuint128, euint128 } from "@fhenixprotocol/contracts/FHE.sol";
 

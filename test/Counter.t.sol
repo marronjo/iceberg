@@ -37,7 +37,7 @@ contract CounterTest is Test, Fixtures {
         deployFreshManagerAndRouters();
         deployMintAndApprove2Currencies();
 
-        deployAndApprovePosm(manager);
+        deployAndApprovePosm(manager, currency0, currency1);
 
         // Deploy the hook to an address with the correct flags
         address flags = address(

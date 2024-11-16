@@ -6,7 +6,7 @@ import { console2 } from "forge-std/console2.sol";
 
 import { Permission, Permissioned } from "@fhenixprotocol/contracts/access/Permissioned.sol";
 
-import { PermissionHelper } from "../util/PermissionHelper.sol";
+import { PermissionHelper } from "./utils/PermissionHelper.sol";
 
 contract PermissionedTest is Test {
     PermissionedTestContract private permissions;

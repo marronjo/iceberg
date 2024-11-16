@@ -16,16 +16,23 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {EpochLibrary, Epoch} from "./lib/EpochLibrary.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 //Fhenix Imports
 import { 
     FHE,
+    inEuint128,
     euint128,
+    inEuint32,
     euint32,
+    inEbool,
     ebool
     } from "@fhenixprotocol/contracts/FHE.sol";
 import {IFHERC20} from "./interface/IFHERC20.sol";
 import {FHERC6909} from "./FHERC6909.sol";
+
+import {console2} from "forge-std/Test.sol";
+import {console} from "forge-std/console.sol";
 
 contract Iceberg is BaseHook, FHERC6909 {
 
@@ -161,29 +168,33 @@ contract Iceberg is BaseHook, FHERC6909 {
         return Iceberg.afterInitialize.selector;
     }
 
-    function placeIcebergOrder(PoolKey calldata key, euint32 tickLower, ebool zeroForOne, euint128 liquidity)
+    function placeIcebergOrder(PoolKey calldata key, inEuint32 calldata tickLower, inEbool calldata zeroForOne, inEuint128 calldata liquidity)
         external
         onlyValidPools(key.hooks)
     {
-        FHE.req(FHE.gt(liquidity, FHE.asEuint128(0)));
+        euint128 _liquidity = FHE.asEuint128(liquidity);
 
-        // poolManager.unlock(
-        //     abi.encodeCall(
-        //         this.unlockCallbackPlace, (key, tickLower, zeroForOne, int256(uint256(liquidity)), msg.sender)
-        //     )
-        // );
+        //FHE Require, liquidity must be > 0
+        FHE.req(FHE.gt(_liquidity, FHE.asEuint128(0)));
 
-        bytes32 tokenId = keccak256(abi.encode(key, tickLower, zeroForOne));
+        euint32 _tickLower = FHE.asEuint32(tickLower);
+        ebool _zeroForOne = FHE.asEbool(zeroForOne);
+
+        //TODO fix this hashing
+        bytes32 tokenId = keccak256(abi.encode(key, _tickLower, _zeroForOne));
 
         //mint FHERC6909 tokens to user as receipt of order
-        _mintEnc(msg.sender, tokenId, liquidity);
-        totalSupply[tokenId] = FHE.add(totalSupply[tokenId], liquidity);
+        _mintEnc(msg.sender, tokenId, _liquidity);
+        totalSupply[tokenId] = FHE.add(totalSupply[tokenId], _liquidity);
 
         EncEpochInfo storage epochInfo;
-        Epoch epoch = getEncEpoch(key, tickLower, zeroForOne);
+        Epoch epoch = getEncEpoch(key, _tickLower, _zeroForOne);
+
+        console2.logUint(Epoch.unwrap(epoch));
+
         if (epoch.equals(EPOCH_DEFAULT)) {
             unchecked {
-                setEncEpoch(key, tickLower, zeroForOne, epoch = epochNext);
+                setEncEpoch(key, _tickLower, _zeroForOne, epoch = epochNext);
                 epochNext = epoch.unsafeIncrement();
             }
             epochInfo = encEpochInfos[epoch];
@@ -194,15 +205,16 @@ contract Iceberg is BaseHook, FHERC6909 {
         }
 
         unchecked {
-            epochInfo.liquidityTotal = FHE.add(epochInfo.liquidityTotal, liquidity);
-            epochInfo.liquidity[msg.sender] = FHE.add(epochInfo.liquidity[msg.sender], liquidity);
+            epochInfo.liquidityTotal = FHE.add(epochInfo.liquidityTotal, _liquidity);
+            epochInfo.liquidity[msg.sender] = FHE.add(epochInfo.liquidity[msg.sender], _liquidity);
         }
 
-        //TODO Transfer in FHERC20 tokens!! TransferFrom
+        //console2.logUint(epoc);
+
         euint128 zero = FHE.asEuint128(0);
 
-        euint128 token0Amount = FHE.select(zeroForOne, liquidity, zero);
-        euint128 token1Amount = FHE.select(zeroForOne, zero, liquidity);
+        euint128 token0Amount = FHE.select(_zeroForOne, _liquidity, zero);
+        euint128 token1Amount = FHE.select(_zeroForOne, zero, _liquidity);
 
         // send both tokens, one amount is zero to obscure trade direction
         IFHERC20(Currency.unwrap(key.currency0)).transferFromEncrypted(msg.sender, address(this), token0Amount);
@@ -216,13 +228,21 @@ contract Iceberg is BaseHook, FHERC6909 {
         BalanceDelta,
         bytes calldata
     ) external override onlyByManager returns (bytes4, int128) {
+        console2.logString("Entered After Swap hook!!!");
         (int24 tickLower, int24 lower, int24 upper) = _getCrossedTicks(key.toId(), key.tickSpacing);
         if (lower > upper) return (Iceberg.afterSwap.selector, 0);
 
         // note that a zeroForOne swap means that the pool is actually gaining token0, so limit
         // order fills are the opposite of swap fills, hence the inversion below
+        console2.logString("Entered After Swap hook, check for fills");
         bool zeroForOne = !params.zeroForOne;
+        
+        console2.logInt(tickLower);
+        console2.logInt(lower);
+        console2.logInt(upper);
+
         for (; lower <= upper; lower += key.tickSpacing) {
+            console2.logString("Filling epoch!");
             _fillEpoch(key, lower, zeroForOne);
         }
 
@@ -230,11 +250,21 @@ contract Iceberg is BaseHook, FHERC6909 {
         return (Iceberg.afterSwap.selector, 0);
     }
 
+    //TODO
+    // manager.swap
+    // settle currency
+    // take receipt ... FHERC6909
+
     function _fillEpoch(PoolKey calldata key, int24 lower, bool zeroForOne) internal {
         euint32 encLower = FHE.asEuint32(uint32(int32(lower)));
         ebool encZeroForOne = FHE.asEbool(zeroForOne);
 
+        console2.logString("Get Enc Epoch");
+        console2.logUint(euint32.unwrap(encLower));
         Epoch epoch = getEncEpoch(key, encLower, encZeroForOne);
+
+        console2.logString("Fill Epoch method");
+        console2.logUint(Epoch.unwrap(epoch));
 
         if (!epoch.equals(EPOCH_DEFAULT)) {
             EncEpochInfo storage epochInfo = encEpochInfos[epoch];
@@ -244,24 +274,51 @@ contract Iceberg is BaseHook, FHERC6909 {
             uint128 decTotalLiquidity = FHE.decrypt(epochInfo.liquidityTotal);
             int256 decTotalLiq256 = -int256(uint256(decTotalLiquidity));
 
-            //decrypt encrypted amount needed to fill swaps, send into pool manager
-            //modify liquidity params
-            //pool manager settle
-            _preFillSettleManagerPosition(key, lower, decTotalLiq256);
+            BalanceDelta delta = _swapPoolManager(key, zeroForOne, decTotalLiq256);
 
-            (uint256 amount0, uint256 amount1) =
-                _unlockCallbackFill(key, lower, decTotalLiq256);
+            (uint128 amount0, uint128 amount1) = _unwrapEncTokens(key, zeroForOne, delta);
 
-            euint128 encAmount0 = FHE.asEuint128(uint128(amount0));
-            euint128 encAmount1 = FHE.asEuint128(uint128(amount1));
-
-            unchecked {
-                epochInfo.token0Total = FHE.add(epochInfo.token0Total, encAmount0);
-                epochInfo.token1Total = FHE.add(epochInfo.token1Total, encAmount1);
+            // settle with pool manager the unencrypted FHERC20 tokens
+            if (delta.amount0() < 0) {
+                key.currency0.settle(poolManager, address(this), uint256(amount0), false);
+                key.currency1.take(poolManager, address(this), uint256(amount1), false);
+            } else {
+                key.currency1.settle(poolManager, address(this), uint256(amount1), false);
+                key.currency0.take(poolManager, address(this), uint256(amount0), false);
             }
 
-            setEncEpoch(key, encLower, encZeroForOne, EPOCH_DEFAULT);
+            console2.logString("Amount0 ...");
+            console2.logUint(amount0);
+
+            console2.logString("Amount1 ...");
+            console2.logUint(amount1);
         }
+    }
+
+    function _swapPoolManager(PoolKey calldata key, bool zeroForOne, int256 amountSpecified) private returns(BalanceDelta delta) {
+        IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
+            zeroForOne: zeroForOne,
+            amountSpecified: amountSpecified,
+            sqrtPriceLimitX96: zeroForOne ? 
+                        TickMath.MIN_SQRT_PRICE + 1 :   // increasing price of token 1, lower ratio
+                        TickMath.MAX_SQRT_PRICE - 1
+        });
+
+        delta = poolManager.swap(key, params, ZERO_BYTES);
+    }
+
+    function _unwrapEncTokens(PoolKey calldata key, bool zeroForOne, BalanceDelta delta) private returns(uint128 amount0, uint128 amount1) {
+        if(zeroForOne){
+            amount0 = uint128(-delta.amount0()); // hook sends in -amount0 and receives +amount1
+            amount1 = uint128(delta.amount1());
+
+            IFHERC20(Currency.unwrap(key.currency0)).unwrap(amount0); //unwrap encrypted tokens to be settled with pool
+        } else {
+            amount0 = uint128(delta.amount0()); // hook sends in +-mount1 and receives +amount0
+            amount1 = uint128(-delta.amount1());
+
+            IFHERC20(Currency.unwrap(key.currency1)).unwrap(amount1); //unwrap encrypted tokens to be settled with pool
+        }            
     }
 
     function _preFillSettleManagerPosition(PoolKey calldata key, int24 tickLower, int256 liqDelta) private {
