@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 
 import {IFHERC6909} from "./interface/IFHERC6909.sol";
 import { FHE, euint128, inEuint128, ebool } from "@fhenixprotocol/contracts/FHE.sol";
+import { Permission} from "@fhenixprotocol/contracts/access/Permissioned.sol";
 
 abstract contract FHERC6909 is IFHERC6909 {
 
@@ -11,6 +12,10 @@ abstract contract FHERC6909 is IFHERC6909 {
     mapping(address owner => mapping(bytes32 id => euint128 balance)) public balanceOf;
 
     mapping(address owner => mapping(address spender => mapping(bytes32 id => euint128 amount))) public allowance;
+
+    function sealedBalance(Permission calldata permission, bytes32 tokenId) public view returns(string memory) {
+        return FHE.sealoutput(this.balanceOf(msg.sender, tokenId), permission.publicKey);
+    }
 
     function transfer(address receiver, bytes32 id, euint128 amount) public virtual returns (bool) {
         balanceOf[msg.sender][id] = FHE.sub(balanceOf[msg.sender][id], amount);

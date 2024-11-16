@@ -51,6 +51,9 @@ contract IcebergTest is Test, Fixtures, FheEnabled {
     Permission private permissionToken0;
     Permission private permissionToken1;
 
+    PermissionHelper private permitHelperFHERC6909;
+    Permission private permissionFHERC6909;
+
     function setUp() public {
 
         initializeFhe();
@@ -85,6 +88,9 @@ contract IcebergTest is Test, Fixtures, FheEnabled {
         deployCodeTo("Iceberg.sol:Iceberg", constructorArgs, flags);
         hook = Iceberg(flags);
 
+        permitHelperFHERC6909 = new PermissionHelper(address(hook));
+        permissionFHERC6909 = permitHelperFHERC6909.generatePermission(userPrivateKey);
+
         // Create the pool
         key = PoolKey(fheCurrency0, fheCurrency1, 3000, 60, IHooks(hook));
         poolId = key.toId();
@@ -118,47 +124,6 @@ contract IcebergTest is Test, Fixtures, FheEnabled {
         vm.stopPrank();
     }
 
-    function deployMintAndApprove2FHECurrencies() internal returns (Currency currency0, Currency currency1) {
-        Currency _currencyA = deployMintAndApproveCurrency("TokenA", "TOKA");
-        address tokenA = Currency.unwrap(_currencyA);
-
-        Currency _currencyB = deployMintAndApproveCurrency("TokenB", "TOKB");
-        address tokenB = Currency.unwrap(_currencyB);
-
-        if (tokenA < tokenB) {
-            (currency0, currency1) = (Currency.wrap(tokenA), Currency.wrap(tokenB));
-        } else {
-            (currency0, currency1) = (Currency.wrap(tokenB), Currency.wrap(tokenA));
-        }
-
-        return (currency0, currency1);
-    }
-
-    function deployMintAndApproveCurrency(string memory name, string memory symbol) internal returns (Currency currency) {
-        FHERC20 token = new FHERC20(name, symbol);
-        token.mint(type(uint256).max);
-        token.wrap(type(uint128).max - 1);
-
-        address[9] memory toApprove = [
-            address(swapRouter),
-            address(swapRouterNoChecks),
-            address(modifyLiquidityRouter),
-            address(modifyLiquidityNoChecks),
-            address(donateRouter),
-            address(takeRouter),
-            address(claimsRouter),
-            address(nestedActionRouter.executor()),
-            address(actionsRouter)
-        ];
-
-        for (uint256 i = 0; i < toApprove.length; i++) {
-            token.approve(toApprove[i], type(uint256).max);
-            //token.approveEncrypted(toApprove[i], encrypt128(type(uint128).max));
-        }
-
-        return Currency.wrap(address(token));
-    }
-
     function testPlaceIcebergOrder() private {
         uint128 max = type(uint128).max - 1;
         fheToken0.approveEncrypted(address(hook), encrypt128(max));
@@ -168,6 +133,16 @@ contract IcebergTest is Test, Fixtures, FheEnabled {
         inEbool memory encZeroForOne = encryptBool(0);       // encrypted false e.g. trade One for Zero!
         inEuint128 memory liquidity = encrypt128(987654321); // encrypted size of trade
 
+        hook.placeIcebergOrder(key, encTickLower, encZeroForOne, liquidity);
+    }
+
+    function testRevertPlaceIcebergOrderZeroLiquidity() public {
+        inEuint32 memory encTickLower = encrypt32(10);        // encrypted 10 tick
+        inEbool memory encZeroForOne = encryptBool(1);       // encrypted true
+        inEuint128 memory liquidity = encrypt128(0); // encrypted size of trade (0)
+
+        vm.expectRevert();
+        
         hook.placeIcebergOrder(key, encTickLower, encZeroForOne, liquidity);
     }
 
@@ -205,8 +180,93 @@ contract IcebergTest is Test, Fixtures, FheEnabled {
         assertEq(userBalanceBeforeToken1 - 987654321, userBalanceAfterToken1);
     }
 
+    function testRedeemOrder() printBalancesBeforeAfter public {
+        // user balance should increase on token0 since it is a oneForZero swap
+        vm.startPrank(user);
+        string memory userEncryptedBalanceBefore = fheToken0.balanceOfEncrypted(user, permissionToken0);
+        uint256 userBalanceBeforeToken0 = unseal(address(fheToken0), userEncryptedBalanceBefore);
+        vm.stopPrank();
+
+        testAfterSwapIceberg();
+
+        bytes32 tokId = keccak256(abi.encodePacked(key.toId(), uint32(0), false));
+
+        vm.startPrank(user);
+        string memory userEncryptedFHERC6909Balance = hook.sealedBalance(permissionFHERC6909, tokId);
+        uint256 userBalanceFHERC6909 = unseal(address(hook), userEncryptedFHERC6909Balance);
+        
+        //ensure user has accurate number of FHERC6909 receipt tokens
+        assertEq(userBalanceFHERC6909, 987654321);
+
+        string memory userEncryptedBalanceMid = fheToken0.balanceOfEncrypted(user, permissionToken0);
+        uint256 userBalanceMidToken0 = unseal(address(fheToken0), userEncryptedBalanceMid);
+
+        hook.redeemOrder(key, tokId);
+
+        string memory userFHERC6909BalanceAfterRedeem = hook.sealedBalance(permissionFHERC6909, tokId);
+        uint256 userBalanceFHERC6909AfterRedeem = unseal(address(hook), userFHERC6909BalanceAfterRedeem);
+        assertEq(userBalanceFHERC6909AfterRedeem, 0); //ensure all receipt tokens are burnt
+
+        string memory userEncryptedBalanceAfter = fheToken0.balanceOfEncrypted(user, permissionToken0);
+        uint256 userBalanceAfterToken0 = unseal(address(fheToken0), userEncryptedBalanceAfter);
+
+        console2.logString("userBalanceBeforeToken0");
+        console2.logUint(userBalanceBeforeToken0);
+
+        console2.logString("userBalanceMidToken0");
+        console2.logUint(userBalanceMidToken0);
+
+        console2.logString("userBalanceAfterToken0");
+        console2.logUint(userBalanceAfterToken0);
+
+        assertGt(userBalanceBeforeToken0, userBalanceAfterToken0); //ensure balance increase from filled iceberg order
+
+        vm.stopPrank();
+    }
+
     function _defaultTestSettings() internal pure returns (PoolSwapTest.TestSettings memory testSetting) {
         return PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false});
+    }
+
+    function deployMintAndApproveCurrency(string memory name, string memory symbol) internal returns (Currency currency) {
+        FHERC20 token = new FHERC20(name, symbol);
+        token.mint(type(uint256).max);
+        token.wrap(type(uint128).max - 1);
+
+        address[9] memory toApprove = [
+            address(swapRouter),
+            address(swapRouterNoChecks),
+            address(modifyLiquidityRouter),
+            address(modifyLiquidityNoChecks),
+            address(donateRouter),
+            address(takeRouter),
+            address(claimsRouter),
+            address(nestedActionRouter.executor()),
+            address(actionsRouter)
+        ];
+
+        for (uint256 i = 0; i < toApprove.length; i++) {
+            token.approve(toApprove[i], type(uint256).max);
+            //token.approveEncrypted(toApprove[i], encrypt128(type(uint128).max));
+        }
+
+        return Currency.wrap(address(token));
+    }
+
+    function deployMintAndApprove2FHECurrencies() internal returns (Currency currency0, Currency currency1) {
+        Currency _currencyA = deployMintAndApproveCurrency("TokenA", "TOKA");
+        address tokenA = Currency.unwrap(_currencyA);
+
+        Currency _currencyB = deployMintAndApproveCurrency("TokenB", "TOKB");
+        address tokenB = Currency.unwrap(_currencyB);
+
+        if (tokenA < tokenB) {
+            (currency0, currency1) = (Currency.wrap(tokenA), Currency.wrap(tokenB));
+        } else {
+            (currency0, currency1) = (Currency.wrap(tokenB), Currency.wrap(tokenA));
+        }
+
+        return (currency0, currency1);
     }
 
     modifier prank(address u) {

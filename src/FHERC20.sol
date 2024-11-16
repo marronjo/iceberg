@@ -28,6 +28,11 @@ contract FHERC20 is IFHERC20, ERC20, Permissioned {
         return FHE.sealoutput(_allowanceEncrypted(msg.sender, spender), permission.publicKey);
     }
 
+    function approveEncrypted(address spender, euint128 value) public virtual returns (bool) {
+        _approve(msg.sender, spender, value);
+        return true;
+    }
+
     function approveEncrypted(address spender, inEuint128 calldata value) public virtual returns (bool) {
         _approve(msg.sender, spender, FHE.asEuint128(value));
         return true;
@@ -103,6 +108,10 @@ contract FHERC20 is IFHERC20, ERC20, Permissioned {
 
     function transferEncrypted(address to, inEuint128 calldata encryptedAmount) public returns (euint128) {
         return transferEncrypted(to, FHE.asEuint128(encryptedAmount));
+    }
+
+    function transferEncrypted(address from, address to, euint128 encryptedAmount) public returns (euint128) {
+        return _transferImpl(from, to, encryptedAmount);
     }
 
     // Transfers an amount from the message sender address to the `to` address.

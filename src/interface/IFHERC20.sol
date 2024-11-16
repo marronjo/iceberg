@@ -61,6 +61,7 @@ interface IFHERC20 is IERC20 {
      */
     function transferEncrypted(address to, inEuint128 calldata value) external returns (euint128);
     function transferEncrypted(address to, euint128 value) external returns (euint128);
+    function transferEncrypted(address from, address to, euint128 encryptedAmount) external returns (euint128);
 
     /**
      * @dev Returns the remaining number of tokens that `spender` will be
@@ -87,6 +88,7 @@ interface IFHERC20 is IERC20 {
      * Emits an {ApprovalEncrypted} event.
      */
     function approveEncrypted(address spender, inEuint128 calldata value) external returns (bool);
+    function approveEncrypted(address spender, euint128 value) external returns (bool);
 
     /**
      * @dev Moves a `value` amount of tokens from `from` to `to` using the
