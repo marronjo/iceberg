@@ -62,19 +62,6 @@ contract Iceberg is BaseHook, FHERC6909 {
     mapping(PoolId => int24) public tickLowerLasts;
     Epoch public epochNext = Epoch.wrap(1);
 
-    // struct EpochInfo {
-    //     bool filled;
-    //     Currency currency0;
-    //     Currency currency1;
-    //     uint256 token0Total;
-    //     uint256 token1Total;
-    //     uint128 liquidityTotal;
-    //     mapping(address => uint128) liquidity;
-    // }
-
-    // mapping(bytes32 => Epoch) public epochs;    
-    // mapping(Epoch => EpochInfo) public epochInfos;
-
     struct EncEpochInfo {
         ebool filled;
         Currency currency0;
@@ -119,18 +106,6 @@ contract Iceberg is BaseHook, FHERC6909 {
     function setTickLowerLast(PoolId poolId, int24 tickLower) private {
         tickLowerLasts[poolId] = tickLower;
     }
-
-    // function getEpoch(PoolKey memory key, int24 tickLower, bool zeroForOne) public view returns (Epoch) {
-    //     return epochs[key][tickLower];
-    // }
-
-    // function setEpoch(PoolKey memory key, int24 tickLower, bool zeroForOne, Epoch epoch) private {
-    //     epochs[keccak256(abi.encode(key, tickLower, zeroForOne))] = epoch;
-    // }
-
-    // function getEpochLiquidity(Epoch epoch, address owner) external view returns (uint256) {
-    //     return epochInfos[epoch].liquidity[owner];
-    // }
 
     function getEncEpoch(PoolKey memory key, euint32 tickLower, ebool zeroForOne) public view returns (Epoch) {
         return epochs[keccak256(abi.encode(key))][tickLower][zeroForOne];
@@ -209,14 +184,12 @@ contract Iceberg is BaseHook, FHERC6909 {
             epochInfo.liquidity[msg.sender] = FHE.add(epochInfo.liquidity[msg.sender], _liquidity);
         }
 
-        //console2.logUint(epoc);
-
         euint128 zero = FHE.asEuint128(0);
 
         euint128 token0Amount = FHE.select(_zeroForOne, _liquidity, zero);
         euint128 token1Amount = FHE.select(_zeroForOne, zero, _liquidity);
 
-        // send both tokens, one amount is zero to obscure trade direction
+        // send both tokens, one amount is encrypted zero to obscure trade direction
         IFHERC20(Currency.unwrap(key.currency0)).transferFromEncrypted(msg.sender, address(this), token0Amount);
         IFHERC20(Currency.unwrap(key.currency1)).transferFromEncrypted(msg.sender, address(this), token1Amount);
     }
@@ -228,21 +201,14 @@ contract Iceberg is BaseHook, FHERC6909 {
         BalanceDelta,
         bytes calldata
     ) external override onlyByManager returns (bytes4, int128) {
-        console2.logString("Entered After Swap hook!!!");
         (int24 tickLower, int24 lower, int24 upper) = _getCrossedTicks(key.toId(), key.tickSpacing);
         if (lower > upper) return (Iceberg.afterSwap.selector, 0);
 
         // note that a zeroForOne swap means that the pool is actually gaining token0, so limit
         // order fills are the opposite of swap fills, hence the inversion below
-        console2.logString("Entered After Swap hook, check for fills");
         bool zeroForOne = !params.zeroForOne;
-        
-        console2.logInt(tickLower);
-        console2.logInt(lower);
-        console2.logInt(upper);
 
         for (; lower <= upper; lower += key.tickSpacing) {
-            console2.logString("Filling epoch!");
             _fillEpoch(key, lower, zeroForOne);
         }
 
@@ -250,21 +216,11 @@ contract Iceberg is BaseHook, FHERC6909 {
         return (Iceberg.afterSwap.selector, 0);
     }
 
-    //TODO
-    // manager.swap
-    // settle currency
-    // take receipt ... FHERC6909
-
     function _fillEpoch(PoolKey calldata key, int24 lower, bool zeroForOne) internal {
         euint32 encLower = FHE.asEuint32(uint32(int32(lower)));
         ebool encZeroForOne = FHE.asEbool(zeroForOne);
 
-        console2.logString("Get Enc Epoch");
-        console2.logUint(euint32.unwrap(encLower));
         Epoch epoch = getEncEpoch(key, encLower, encZeroForOne);
-
-        console2.logString("Fill Epoch method");
-        console2.logUint(Epoch.unwrap(epoch));
 
         if (!epoch.equals(EPOCH_DEFAULT)) {
             EncEpochInfo storage epochInfo = encEpochInfos[epoch];
@@ -279,6 +235,7 @@ contract Iceberg is BaseHook, FHERC6909 {
             (uint128 amount0, uint128 amount1) = _unwrapEncTokens(key, zeroForOne, delta);
 
             // settle with pool manager the unencrypted FHERC20 tokens
+            // send in tokens owed to pool and take tokens owed to the hook
             if (delta.amount0() < 0) {
                 key.currency0.settle(poolManager, address(this), uint256(amount0), false);
                 key.currency1.take(poolManager, address(this), uint256(amount1), false);
@@ -286,12 +243,6 @@ contract Iceberg is BaseHook, FHERC6909 {
                 key.currency1.settle(poolManager, address(this), uint256(amount1), false);
                 key.currency0.take(poolManager, address(this), uint256(amount0), false);
             }
-
-            console2.logString("Amount0 ...");
-            console2.logUint(amount0);
-
-            console2.logString("Amount1 ...");
-            console2.logUint(amount1);
         }
     }
 
@@ -380,13 +331,6 @@ contract Iceberg is BaseHook, FHERC6909 {
 
         amount0 = uint128(delta.amount0());
         amount1 = uint128(delta.amount1());
-
-        // if (delta.amount0() > 0) {
-        //     poolManager.mint(address(this), key.currency0.toId(), amount0 = uint128(delta.amount0()));
-        // }
-        // if (delta.amount1() > 0) {
-        //     poolManager.mint(address(this), key.currency1.toId(), amount1 = uint128(delta.amount1()));
-        // }
     }
 
 }
